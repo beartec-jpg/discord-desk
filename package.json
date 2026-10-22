@@ -1,0 +1,35 @@
+{
+  "name": "discord-desk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone BTC/XRP AI trading desk: Binance data + indicators → Grok (xAI) → Discord embeds",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "desk": "tsx src/cli.ts",
+    "desk:prod": "node dist/cli.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "smoke": "tsx src/cli.ts --symbol XRPUSDT --dry-run --mock"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "node-cron": "^4.6.0",
+    "openai": "^6.49.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
