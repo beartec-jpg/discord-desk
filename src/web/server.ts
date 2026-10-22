@@ -26,9 +26,10 @@ export function createServer(cache: DeskCache, info: Record<string, any>) {
     if (running) return res.status(409).json({ error: 'a run is already in progress' });
     const symbol = String(req.body?.symbol || 'BTCUSDT');
     const dryRun = req.body?.dryRun !== false;
+    const noPost = Boolean(req.body?.noPost);
     running = true;
     try {
-      res.json(await runAndRecord(cache, symbol, { dryRun, trigger: 'dashboard' }));
+      res.json(await runAndRecord(cache, symbol, { dryRun, noPost, trigger: 'dashboard' }));
     } finally {
       running = false;
     }

@@ -10,10 +10,11 @@ summary{cursor:pointer}
 </style></head><body>
 <h1>📡 Discord Desk</h1><div id="info"><small>loading…</small></div>
 <p><select id="sym"><option>BTCUSDT</option><option>XRPUSDT</option></select>
-<label><input type="checkbox" id="dry" checked> dry run (don't post)</label>
+<select id="mode"><option value="dry">dry run (no post, no tracking)</option><option value="nopost">track only (register in tracker, no Discord post)</option><option value="live">live (post to Discord + track)</option></select>
 <button onclick="runNow()">Run now</button> <span id="st"></span></p>
 <p><small>Not financial advice. Output is AI-generated ideas for education only.</small></p>
-<div id="runs"></div>
+<h2 style="font-size:16px">📒 Trade tracker</h2><div id="trk"><small>loading…</small></div>
+<h2 style="font-size:16px">Runs</h2><div id="runs"></div>
 <script>
 const qs=new URLSearchParams(location.search);const tok=qs.get('token');
 const H=tok?{'x-dashboard-token':tok,'Content-Type':'application/json'}:{'Content-Type':'application/json'};
@@ -25,7 +26,13 @@ function embeds(p){if(!p)return '';return '<div class="emb">'+esc(p.content)+'</
 async function load(){const {runs}=await (await fetch('/api/runs',{headers:H})).json();
 document.getElementById('runs').innerHTML=runs.length?runs.map(r=>{const res=r.result||{};return '<div class="run"><b class="'+(res.success?'ok':'bad')+'">'+(res.success?'OK':'FAILED')+'</b> '+esc((res.symbols||[]).join(','))+' <small>'+esc(res.startedAt)+' · '+esc(r.trigger)+(r.dryRun?' · dry run':'')+'</small>'+(res.error?'<div class="bad">'+esc(res.error)+'</div>':'')+(res.results||[]).map(x=>'<h3>'+esc(x.symbol)+' '+(x.error?'<span class="bad">'+esc(x.error)+'</span>':'')+'</h3>'+setups(x.setups)+'<details><summary>Discord payload</summary>'+embeds(x.payload)+'</details>').join('')+'</div>'}).join(''):'<small>No runs yet. Click "Run now".</small>';}
 async function runNow(){const st=document.getElementById('st');st.textContent='running… (can take a few minutes)';
-const r=await fetch('/api/run',{method:'POST',headers:H,body:JSON.stringify({symbol:document.getElementById('sym').value,dryRun:document.getElementById('dry').checked})});
-st.textContent=r.ok?'done':'error '+r.status;load();}
-info();load();
+const r=await fetch('/api/run',{method:'POST',headers:H,body:JSON.stringify({symbol:document.getElementById('sym').value,dryRun:document.getElementById('mode').value==='dry',noPost:document.getElementById('mode').value==='nopost'})});
+st.textContent=r.ok?'done':'error '+r.status;load();trk();}
+async function trk(){const el=document.getElementById('trk');try{
+const t=await fetch('/api/trades?limit=30',{headers:H});if(!t.ok){el.innerHTML='<small>tracker not bundled here (TRACKER_URL external or off)</small>';return;}
+const {trades}=await t.json();const p=await (await fetch('/api/performance',{headers:H})).json();const a=p.allTime||{};
+el.innerHTML='<small>closed: '+esc(a.totalTrades??0)+' · win rate: '+esc(a.winRate!=null?(a.winRate*100).toFixed(0)+'%':'—')+' · net R: '+esc(a.netR!=null?Number(a.netR).toFixed(2):'—')+' · PF: '+esc(a.profitFactor??'—')+'</small>'+
+(trades.length?'<table><tr><th>Created</th><th>Symbol</th><th>Dir</th><th>Status</th><th>Entry</th><th>Stop</th><th>Targets</th><th>R</th><th>Outcome</th></tr>'+trades.map(x=>'<tr><td>'+esc(String(x.created_at).slice(0,16))+'</td><td>'+esc(x.symbol)+'</td><td>'+esc(x.direction)+'</td><td>'+esc(x.status)+'</td><td>'+esc(Number(x.entry))+'</td><td>'+esc(Number(x.current_stop))+'</td><td>'+esc((x.targets||[]).map(Number).join(', '))+'</td><td>'+esc(Number(x.realized_r||0).toFixed(2))+'</td><td>'+esc(x.outcome||'')+'</td></tr>').join('')+'</table>':'<small>no tracked trades yet</small>');
+}catch(e){el.innerHTML='<small>tracker unavailable</small>'}}
+info();load();trk();setInterval(trk,30000);
 </script></body></html>`;

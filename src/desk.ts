@@ -226,6 +226,8 @@ export interface DeskRunOptions {
   symbols?: string | string[] | null;
   /** Print / return the Discord payload instead of posting it. Also skips tracker writes. */
   dryRun?: boolean;
+  /** Skip the Discord post only; tracker register/cancel still happen (for testing the tracker). */
+  noPost?: boolean;
   cache: DeskCache;
 }
 
@@ -250,6 +252,7 @@ export interface DeskRunResult {
 export async function runDesk(opts: DeskRunOptions): Promise<DeskRunResult> {
   const startedAt = new Date().toISOString();
   const dryRun = Boolean(opts.dryRun);
+  const skipPost = dryRun || Boolean(opts.noPost);
   const cache = opts.cache;
 
   const defaultWebhookUrl =
@@ -279,7 +282,7 @@ export async function runDesk(opts: DeskRunOptions): Promise<DeskRunResult> {
 
   for (const symbol of symbols) {
     const webhookUrl = resolveWebhookForSymbol(symbol, defaultWebhookUrl || '');
-    if (!webhookUrl && !dryRun) {
+    if (!webhookUrl && !skipPost) {
       console.error(`No webhook for ${symbol} — set DISCORD_WEBHOOK_URL_${symbol.replace(/USDT$/i, '')}`);
       results.push({
         success: false,
@@ -606,8 +609,8 @@ export async function runDesk(opts: DeskRunOptions): Promise<DeskRunResult> {
     });
 
     const payload = { content, embeds };
-    const discord = dryRun
-      ? { ok: true, status: 0, body: 'dry-run: not posted' }
+    const discord = skipPost
+      ? { ok: true, status: 0, body: 'not posted (dry-run / no-post)' }
       : await postDiscordWebhook({ webhookUrl, content, embeds });
 
     // Auto-register priced setups with the always-on trade tracker (spare server).
@@ -719,6 +722,7 @@ export async function runDesk(opts: DeskRunOptions): Promise<DeskRunResult> {
       success: true,
       symbol,
       dryRun,
+      posted: !skipPost,
       payload,
       setups: deep.bestTrades,
       higherTimeframe: deep.higherTimeframe,
@@ -742,7 +746,7 @@ export async function runDesk(opts: DeskRunOptions): Promise<DeskRunResult> {
     console.error(`Discord desk failed for ${symbol}:`, error);
     // Best-effort failure notice to Discord
     try {
-      if (webhookUrl && !dryRun) {
+      if (webhookUrl && !skipPost) {
         await postDiscordWebhook({
           webhookUrl,
           content: `⚠️ **${symbol} pre-London desk failed:** ${error?.message || 'unknown error'}`,

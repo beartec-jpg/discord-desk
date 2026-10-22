@@ -2,7 +2,7 @@
 
 A standalone BTC / XRP AI trading desk. Once a day per coin it pulls market data from Binance, works out the indicators, asks Grok (xAI) for structured analysis and trade ideas, and posts the result to a Discord channel as embeds.
 
-Plain Node + TypeScript. Its own scheduler, a CLI, and a small local dashboard. No Vercel and no hosted database needed.
+Plain Node + TypeScript. Its own scheduler, a CLI, a small local dashboard and a **bundled trade tracker** that follows every setup to entry, TP and stop on live Binance prices. No Vercel and no hosted database needed.
 
 > ⚠️ **Not financial advice.** Output is AI-generated ideas for education and discussion only. Always check the chart yourself.
 
@@ -32,7 +32,39 @@ Plain Node + TypeScript. Its own scheduler, a CLI, and a small local dashboard. 
    The primary model is `grok-4.6` with reasoning; it falls back to `grok-4-1-fast-reasoning` if that fails.
 6. **Output.** Grok returns `multiTFInsights` (bias, summary and key levels per TF, plus macro), `bestTrades` (direction, grade, trigger zone and condition, entry, stop, targets, confirmation, stop lift, confluence, R:R, reasoning) and `openTradeReviews`. The code checks these against the gates (R:R, stop distance, structure), then builds the Discord message:
    - ① Deep-dive · ② Trade setups · ③ Cross-timeframe · ④ Open-book review · ⑤ Previous session · Disclaimer
-7. **Tracker (optional).** Cancels stale ideas and registers new ones.
+7. **Trade tracker.** Cancels the stale ideas Grok marked, registers the new setups and then follows them (see below).
+
+## Trade tracker
+
+By default the tracker runs inside the same process. It exposes the API the desk uses and stores trades in an embedded Postgres (PGlite, a WASM build) under `DATA_DIR/tracker-db`, so there's no database to install. If you set `DATABASE_URL` it uses real Postgres with the same `src/tracker/schema.sql`.
+
+**What it does** (`src/tracker/engine.ts`, `store.ts`):
+- Polls Binance prices every `TRACKER_POLL_INTERVAL_MS` (15 s) and also uses the high/low wicks.
+- **Entry confirm:** a setup is `pending` until price tags the zone (`entry_armed`), then opens only on a **reclaim** of the confirm level (`entry_hit`). A sweep far through the origin invalidates it at 0R.
+- **Stop lift:** when `stopLiftTrigger` is tagged, the stop moves to `stopLiftTo` (usually break-even) before TP1.
+- **TP1** closes 50% and moves the stop to BE. **TP2** closes the runner. Stop and BE exits are tracked in R.
+- Discord pings for each event (armed, entry, stop lift, TP1, TP2, stop, cancel) go to the same per-coin webhook, plus a **weekly recap** on Sunday at 18:00 UTC (win rate, net R, PF, max DD, Sharpe/Sortino). Set `TRACKER_NOTIFY=0` to mute.
+- **Paper account:** simulated equity with small risk per trade and capped leverage (`PAPER_*`).
+- The engine processes one event per price tick, in order.
+
+**API** (POST routes need `X-Tracker-Key` if `TRACKER_API_KEY` is set):
+
+| Method | Path | |
+|---|---|---|
+| GET | `/health` | status |
+| GET | `/api/trades?active=1&symbol=XRPUSDT&limit=50` | list trades |
+| GET | `/api/performance?days=7` | stats |
+| GET | `/api/weekly-preview` · `/api/paper` | weekly report preview · paper account |
+| POST | `/api/trades` | register setup(s) `{source, userId, trades:[...]}` |
+| POST | `/api/trades/cancel` | `{ids:[...], reason}` |
+| POST | `/api/trades/:id/process` | evaluate one trade at `{price}` (testing) |
+| POST | `/api/tick` | run an outcome pass now (optional `{prices:{SYMBOL:px}}` overrides) |
+| POST | `/api/sim-price` · `/api/weekly` · `/api/paper/settings` | price override · post weekly · paper settings |
+
+**Modes** (`TRACKER_MODE`):
+- `bundled` (default): in-process. CLI runs open the same DB for the run. If the service is already running, the CLI says so: point it at the service with `TRACKER_URL=http://127.0.0.1:3000`.
+- `external`: set `TRACKER_URL` (for example a tracker started with `npm run tracker`, or `docker compose --profile split`).
+- `off`: no tracking.
 
 ## Setup
 
@@ -57,16 +89,22 @@ npm run desk -- --symbol XRPUSDT --dry-run --mock     # or: npm run smoke
 # Real run, posts to Discord:
 npm run desk -- --symbol BTCUSDT
 
+# Skip the Discord post but register the setups in the tracker, then run one outcome pass:
+npm run desk -- --symbol XRPUSDT --no-post --check-outcomes
+
 # Full JSON result:
 npm run desk -- --symbol BTCUSDT --dry-run --json
 
-# Long-running service (scheduler + dashboard on http://127.0.0.1:3000):
+# Long-running service (scheduler + dashboard + bundled tracker on http://127.0.0.1:3000):
 npm start           # or `npm run dev` without building
+
+# Tracker on its own (port TRACKER_PORT, default 3101):
+npm run tracker
 ```
 
-Dashboard: shows recent runs, setups and the full Discord payload, with a **Run now** button (dry run by default). If you expose it beyond localhost, set `DASHBOARD_TOKEN` and open `/?token=...`.
+Dashboard: shows tracked trades with performance, recent runs, setups and the full Discord payload. **Run now** has three modes: dry run, track only (no post) and live. If you expose it beyond localhost, set `DASHBOARD_TOKEN` and open `/?token=...`.
 
-Tests: `npm test`. Type check: `npm run typecheck`.
+Tests: `npm test` (unit tests plus the tracker engine, entry-confirm, stop-lift and paper-sizing suites on an in-memory DB). End-to-end: `npm run e2e` (mock model and live Binance: desk → tracker register → live outcome pass → forced entry/TP1/TP2 path → open-book review → cancel). Type check: `npm run typecheck`.
 
 ## Docker
 
@@ -77,7 +115,7 @@ docker compose up -d --build
 docker compose run --rm desk node dist/cli.js --symbol XRPUSDT --dry-run
 ```
 
-Run history and the cache live in the `desk-data` volume.
+Run history, the cache and the tracker DB live in the `desk-data` volume. `docker compose --profile split up -d` also starts a separate tracker container (then set `TRACKER_URL=http://tracker:3101`).
 
 ## Configuration
 
@@ -92,7 +130,8 @@ Every variable is listed and explained in [`.env.example`](.env.example). The ma
 | `DISCORD_MIN_RR` / `DISCORD_MIN_CONFLUENCE` | Gates |
 | `DESK_SCHEDULE_BTC` / `DESK_SCHEDULE_XRP` / `DESK_SCHEDULE_TZ` | Cron schedules |
 | `DATABASE_URL` | Optional Postgres cache (default: JSON file in `DATA_DIR`) |
-| `TRACKER_URL` / `TRACKER_API_KEY` | Optional trade tracker |
+| `TRACKER_MODE` / `TRACKER_URL` / `TRACKER_API_KEY` | Trade tracker (bundled by default) |
+| `TRACKER_NOTIFY`, `WEEKLY_*`, `PAPER_*` | Tracker Discord pings, weekly recap, paper account |
 
 ## Improving it
 
@@ -105,11 +144,15 @@ Every variable is listed and explained in [`.env.example`](.env.example). The ma
 | `src/lib/discordWebhook.ts` | Embed formatting for trade setups and posting. |
 | `src/analysis/xaiClient.ts` | xAI client and the offline mock. |
 | `src/cache/index.ts` | JSON / Postgres cache and run history. |
+| `src/tracker/engine.ts` | Trade lifecycle rules: entry confirm, stop lift, TP1/TP2, R accounting. |
+| `src/tracker/store.ts`, `router.ts`, `service.ts` | Tracker DB, Discord pings, weekly report, HTTP API, poll loop. |
+| `src/tracker/paper.ts`, `stats.ts` | Paper account sizing, performance stats. |
 | `src/index.ts`, `src/cli.ts`, `src/web/` | Scheduler, CLI, dashboard. |
 
 Tips:
 - Use `--dry-run` while you iterate on prompts or gates, and compare payloads in the dashboard.
 - Use `--mock` to work on the indicators and layout without spending tokens.
+- The tracker's closed trades (`/api/performance`) tell you whether a prompt change actually helped.
 - A useful next step would be a backtest harness: replay historical klines through `runSystemDeepDive` and score the setups.
 
 ## Disclaimer

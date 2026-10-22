@@ -2,22 +2,27 @@
   "name": "discord-desk",
   "version": "1.0.0",
   "private": true,
-  "description": "Standalone BTC/XRP AI trading desk: Binance data + indicators → Grok (xAI) → Discord embeds",
+  "description": "Standalone BTC/XRP AI trading desk: Binance data + indicators \u2192 Grok (xAI) \u2192 Discord embeds",
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp src/tracker/schema.sql dist/tracker/schema.sql",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "desk": "tsx src/cli.ts",
     "desk:prod": "node dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test test/*.test.ts",
-    "smoke": "tsx src/cli.ts --symbol XRPUSDT --dry-run --mock"
+    "test": "tsx --test test/*.test.ts && npm run test:tracker",
+    "smoke": "tsx src/cli.ts --symbol XRPUSDT --dry-run --mock",
+    "tracker": "tsx src/tracker/index.ts",
+    "tracker:prod": "node dist/tracker/index.js",
+    "e2e": "tsx test/e2e-desk-tracker.ts",
+    "test:tracker": "for f in test/tracker/*.ts; do echo \"== $f\"; TRACKER_DB=memory tsx \"$f\" || exit 1; done"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "dotenv": "^18.0.8",
     "express": "^5.3.0",
     "node-cron": "^4.6.0",

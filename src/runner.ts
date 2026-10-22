@@ -6,11 +6,11 @@ import { runDesk } from './desk.js';
 export async function runAndRecord(
   cache: DeskCache,
   symbols: string | string[] | null,
-  opts: { dryRun?: boolean; trigger: DeskRunRecord['trigger'] },
+  opts: { dryRun?: boolean; noPost?: boolean; trigger: DeskRunRecord['trigger'] },
 ) {
   let result: any;
   try {
-    result = await runDesk({ cache, symbols, dryRun: opts.dryRun });
+    result = await runDesk({ cache, symbols, dryRun: opts.dryRun, noPost: opts.noPost });
   } catch (err: any) {
     result = { success: false, symbols: [symbols].flat(), error: err?.message || String(err), results: [] };
   }

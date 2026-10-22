@@ -1,3 +1,7 @@
+# Default: one container runs the desk, scheduler, dashboard AND the bundled trade tracker.
+#   docker compose up -d --build
+# Split mode (tracker in its own container):
+#   docker compose --profile split up -d --build   and set TRACKER_URL=http://tracker:3101 in .env
 services:
   desk:
     build: .
@@ -10,5 +14,22 @@ services:
     volumes:
       - desk-data:/app/data
     restart: unless-stopped
+
+  tracker:
+    profiles: ["split"]
+    build: .
+    command: ["node", "dist/tracker/index.js"]
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      DATA_DIR: /app/data
+      TRACKER_PORT: 3101
+    ports:
+      - "127.0.0.1:3101:3101"
+    volumes:
+      - tracker-data:/app/data
+    restart: unless-stopped
+
 volumes:
   desk-data:
+  tracker-data:
