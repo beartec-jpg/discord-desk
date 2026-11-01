@@ -1,0 +1,41 @@
+{
+ "v4-XRP": {
+  "top3": [
+   "US10Y@corr",
+   "DXY@corr",
+   "GOLD@corr"
+  ],
+  "combos": [
+   "US10Y@corr+DXY@corr",
+   "US10Y@corr+GOLD@corr",
+   "DXY@corr+GOLD@corr",
+   "US10Y@corr+DXY@corr+GOLD@corr"
+  ]
+ },
+ "desk-XRP": {
+  "top3": [
+   "US10Y",
+   "BTC@corr",
+   "BTC_trend_D"
+  ],
+  "combos": [
+   "US10Y+BTC@corr",
+   "US10Y+BTC_trend_D",
+   "BTC@corr+BTC_trend_D",
+   "US10Y+BTC@corr+BTC_trend_D"
+  ]
+ },
+ "desk-BTC": {
+  "top3": [
+   "US10Y",
+   "XRP_D200",
+   "BTC_trend_4h"
+  ],
+  "combos": [
+   "US10Y+XRP_D200",
+   "US10Y+BTC_trend_4h",
+   "XRP_D200+BTC_trend_4h",
+   "US10Y+XRP_D200+BTC_trend_4h"
+  ]
+ }
+}
